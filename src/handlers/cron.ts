@@ -28,12 +28,11 @@ import {
 } from '../telegram/messages';
 
 const VOTE_TIMEOUT_SECONDS = 60;
+const ICT_OFFSET_SECONDS = 7 * 60 * 60;
 
 // ─── Main cron entry point ───────────────────────────────────────────────────
 
-export async function runCron(env: Env): Promise<void> {
-  const now = Math.floor(Date.now() / 1000);
-
+export async function runCron(env: Env, now = Math.floor(Date.now() / 1000)): Promise<void> {
   // Chạy tuần tự: lock trước → evaluate → pick round mới
   await autoLunchIfNeeded(env, now);
   await lockExpiredRegistrations(env, now);
@@ -43,10 +42,19 @@ export async function runCron(env: Env): Promise<void> {
 
 // ─── Auto-lunch lúc 10:00 ICT (03:00 UTC) ────────────────────────────────────
 
+export function isWeekdayInIct(now: number): boolean {
+  const ictDate = new Date((now + ICT_OFFSET_SECONDS) * 1000);
+  const ictWeekday = ictDate.getUTCDay();
+  return ictWeekday >= 1 && ictWeekday <= 5;
+}
+
 async function autoLunchIfNeeded(env: Env, now: number): Promise<void> {
   // Chỉ chạy đúng phút 03:00 UTC (= 10:00 ICT)
   const d = new Date(now * 1000);
   if (d.getUTCHours() !== 3 || d.getUTCMinutes() !== 0) return;
+
+  // Evaluate the weekday after converting the timestamp to ICT (UTC+7).
+  if (!isWeekdayInIct(now)) return;
 
   const chatIds = await getGroupsForAutoLunch(env.DB);
 

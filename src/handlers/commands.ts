@@ -1,5 +1,5 @@
-import type { Env, TelegramMessage } from '../types';
-import { sendMessage, isGroupAdmin } from '../telegram/api';
+import type { Env, LunchSession, TelegramMessage } from '../types';
+import { sendMessage, editMessage, isGroupAdmin } from '../telegram/api';
 import {
   getFoods,
   addFood,
@@ -9,12 +9,16 @@ import {
   updateSessionMessageId,
   getRegistrationCounts,
   getEatersCount,
+  getFoodVoteCounts,
+  getVoterNames,
   updateSessionStatus,
 } from '../db/queries';
 import {
   buildRegistrationText,
   registrationKeyboard,
   buildLockedText,
+  buildVotingText,
+  votingKeyboard,
 } from '../telegram/messages';
 import { startNewRound } from './cron';
 
@@ -213,7 +217,7 @@ export async function handleLunch(env: Env, msg: TelegramMessage): Promise<void>
   // Check existing active session
   const existing = await getActiveSession(env.DB, chatId);
   if (existing) {
-    await sendMessage(env, chatId, '⚠️ Đã có một phiên ăn trưa đang diễn ra rồi!');
+    await reshowActiveSession(env, chatId, existing);
     return;
   }
 
@@ -242,6 +246,73 @@ export async function handleLunch(env: Env, msg: TelegramMessage): Promise<void>
 
   if (res.ok && res.result?.message_id) {
     await updateSessionMessageId(env.DB, session.id, res.result.message_id);
+  }
+}
+
+async function reshowActiveSession(
+  env: Env,
+  chatId: string,
+  session: LunchSession
+): Promise<void> {
+  let text: string;
+  let extra: object = {};
+
+  switch (session.status) {
+    case 'REGISTRATION': {
+      const counts = await getRegistrationCounts(env.DB, session.id);
+      text = buildRegistrationText(
+        session.registration_deadline,
+        counts.eat,
+        counts.skip
+      );
+      extra = { reply_markup: registrationKeyboard() };
+      break;
+    }
+    case 'LOCKED': {
+      const counts = await getRegistrationCounts(env.DB, session.id);
+      text = buildLockedText(counts.eat, counts.skip);
+      break;
+    }
+    case 'VOTING': {
+      const foods = await getFoods(env.DB, chatId);
+      const food = foods.find(item => item.id === session.current_food_id);
+      const counts = await getFoodVoteCounts(env.DB, session.id, session.current_round);
+      const voterNames = await getVoterNames(env.DB, session.id, session.current_round);
+      text = buildVotingText(
+        session.current_round,
+        foods.length,
+        food?.name ?? '?',
+        session.eaters_count,
+        counts.yes,
+        counts.no,
+        session.vote_deadline ?? 0,
+        voterNames
+      );
+      extra = {
+        reply_markup: votingKeyboard(session.id, session.current_round),
+      };
+      break;
+    }
+    default:
+      return;
+  }
+
+  const res = await sendMessage(env, chatId, text, extra);
+  const newMessageId = res.ok && res.result?.message_id;
+  if (!newMessageId) return;
+
+  // Make the new message authoritative before retiring the old one. This also
+  // makes any callback arriving from a stale keyboard harmless.
+  await updateSessionMessageId(env.DB, session.id, newMessageId);
+
+  if (session.message_id && session.message_id !== newMessageId) {
+    await editMessage(
+      env,
+      chatId,
+      session.message_id,
+      'ℹ️ <b>Phiên ăn trưa đang hiển thị ở tin nhắn mới nhất.</b>',
+      { reply_markup: { inline_keyboard: [] } }
+    );
   }
 }
 
