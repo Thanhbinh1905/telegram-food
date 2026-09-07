@@ -1,0 +1,22 @@
+{
+	"name": "lunch-roulette",
+	"main": "src/index.ts",
+	"compatibility_date": "2024-11-01",
+	"observability": {
+		"enabled": true
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "lunch-roulette-db",
+			"database_id": "417ef374-64e7-4307-b99e-0a1e7844b9b4",
+			"remote": true,
+			"migrations_dir": "migrations"
+		}
+	],
+	"triggers": {
+		"crons": [
+			"* * * * *"
+		]
+	}
+}
