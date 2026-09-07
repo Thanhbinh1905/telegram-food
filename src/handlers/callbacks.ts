@@ -46,6 +46,15 @@ export async function handleRegistrationCallback(
     await answerCallbackQuery(env, cq.id, '⚠️ Không có phiên đăng ký nào đang mở.', true);
     return;
   }
+  if (Number(session.message_id) !== msg.message_id) {
+    await answerCallbackQuery(
+      env,
+      cq.id,
+      'ℹ️ Hãy dùng nút ở tin nhắn mới nhất của phiên này.',
+      true
+    );
+    return;
+  }
 
   const eating: 0 | 1 = action === 'eat' ? 1 : 0;
   await upsertRegistration(env.DB, session.id, userId, userName, eating);
@@ -82,6 +91,15 @@ export async function handleVoteCallback(
   const session = await getSession(env.DB, sessionId);
   if (!session || session.status !== 'VOTING' || session.current_round !== round) {
     await answerCallbackQuery(env, cq.id, '⏰ Vòng vote này đã kết thúc.', true);
+    return;
+  }
+  if (Number(session.message_id) !== msg.message_id) {
+    await answerCallbackQuery(
+      env,
+      cq.id,
+      'ℹ️ Hãy dùng nút ở tin nhắn mới nhất của phiên này.',
+      true
+    );
     return;
   }
 
